@@ -497,6 +497,7 @@ function render() {
   if (!html) html = viewSector(view.sector);
   $("crumbs").innerHTML = crumbs.map((c, i) => i === crumbs.length - 1 ? `<span class="cur">${esc(c[1])}</span>` : `<button type="button" data-sector="${c[0]}">${esc(c[1])}</button><span>›</span>`).join("");
   $("dbody").innerHTML = html;
+  window.__mt = { roads: ROADS.refs.size, roadPieces: [...ROADS.refs.values()].reduce((a, r) => a + r.pieces.length, 0), roadKm: Math.round(ROADS.total), fromOSM: ROADS.fromOSM, planes: planes.size, metar: Object.keys(M).length, weather: (W.list || []).length };
   const sk = $("saveKey"); if (sk) sk.onclick = () => { store.set("tomtom", $("tomtomKey").value.trim()); LAYERS.traffic.on = !!$("tomtomKey").value.trim(); applyLayers(); push("var(--ui)", "Ключ TomTom сохранён, слой пробок включён"); render(); };
   const ck = $("clearKey"); if (ck) ck.onclick = () => { store.set("tomtom", ""); LAYERS.traffic.on = false; if (LAYERS.traffic.group) map.removeLayer(LAYERS.traffic.group); applyLayers(); render(); };
   renderKpis();

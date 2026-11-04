@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ситуационный центр Минтранса</title>
+<meta name="description" content="Живой дашборд транспорта Казахстана на открытых данных: самолёты, аэропорты, погода на трассах, железные дороги, сейсмика.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Unbounded:wght@600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="title"><span class="eyebrow">Министерство транспорта Республики Казахстан</span><h1>Ситуационный центр</h1></div>
+  <div class="hud">
+    <span class="live" id="liveBadge"><i></i><span id="liveText">загрузка…</span></span>
+    <div class="refresh"><svg class="ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--line)" stroke-width="3"/><circle id="ringArc" cx="18" cy="18" r="15" fill="none" stroke="var(--ui)" stroke-width="3" stroke-linecap="round" stroke-dasharray="94.25" stroke-dashoffset="0" transform="rotate(-90 18 18)"/></svg><span>Обновление через <b id="countdown">5:00</b></span></div>
+    <button class="btn" id="refreshNow" type="button">Обновить</button>
+    <button class="btn" id="fullscreen" type="button" title="Во весь экран">⛶</button>
+    <div class="clock"><span id="clock">--:--:--</span><small>Астана</small></div>
+  </div>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<main>
+  <div class="mapbox">
+    <div id="map" aria-label="Карта транспорта Казахстана"></div>
+    <div class="layers" id="layers" role="toolbar" aria-label="Слои карты"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+  <div class="side">
+    <section class="panel detail">
+      <nav class="tabs" id="tabs" aria-label="Отрасли"></nav>
+      <nav class="crumbs" id="crumbs"></nav>
+      <div class="dbody" id="dbody"></div>
+    </section>
+    <section class="panel feed"><h3>Лента событий <span id="feedCount"></span></h3><ol id="feed"></ol></section>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script type="module" src="assets/app.js"></script>
+</body>
+</html>

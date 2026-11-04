@@ -1,0 +1,31 @@
+name: Геометрия дорог (OpenStreetMap)
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  roads:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/fetch-roads.mjs data/roads.json
+      - name: Сохранить в репозиторий
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/roads.json
+          git diff --cached --quiet || (git commit -m "Обновлена геометрия дорог из OSM" && git push)
+      - name: Перепубликовать сайт
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run live.yml --ref main

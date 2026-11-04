@@ -1,0 +1,42 @@
+name: Публикация сайта
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Собрать сайт
+        run: |
+          mkdir -p _site/data
+          cp -r index.html assets _site/
+          [ -f data/roads.json ] && cp data/roads.json _site/data/ || true
+          # последние живые данные как запасной вариант, если raw.githubusercontent.com недоступен
+          git fetch --depth 1 origin live-data 2>/dev/null && git --work-tree=_site/data checkout FETCH_HEAD -- . || echo "live-data пока нет"
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

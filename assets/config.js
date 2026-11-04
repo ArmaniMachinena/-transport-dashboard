@@ -1,5 +1,17 @@
 // Общие справочники: используются и страницей, и скриптами сбора данных.
 
+// Откуда страница берёт живые данные. На GitHub Pages — сначала ветка live-data
+// того же репозитория (обновляется каждые ~5 минут), затем папка data/ самого сайта.
+export function dataBases() {
+  const bases = [];
+  try {
+    const h = location.hostname, m = h.match(/^([^.]+)\.github\.io$/), repo = location.pathname.split("/")[1];
+    if (m && repo) bases.push(`https://raw.githubusercontent.com/${m[1]}/${repo}/live-data/`);
+  } catch {}
+  bases.push("data/");
+  return bases;
+}
+
 export const BBOX = { latMin: 39.5, latMax: 56.5, lonMin: 45.5, lonMax: 88.5 };
 
 // Упрощённый контур Казахстана (для сетки погоды; на карте граница берётся из подложки)

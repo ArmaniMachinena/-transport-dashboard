@@ -1,5 +1,5 @@
 // Ситуационный центр Минтранса — клиентская часть.
-import { AIRPORTS, CITIES, PORTS, BORDERS, PIPES, ROAD_CORRIDORS, CLOSED_SOURCES, GRID } from "./config.js";
+import { AIRPORTS, CITIES, PORTS, BORDERS, PIPES, ROAD_CORRIDORS, CLOSED_SOURCES, GRID, dataBases } from "./config.js";
 
 // ================= утилиты =================
 const $ = (id) => document.getElementById(id);
@@ -63,7 +63,16 @@ const tempColor = (t) => {
 const D = { flights: null, metar: null, weather: null, quakes: null, ships: null, status: null, roads: null };
 const planes = new Map(); // hex -> {..., marker}
 let direct = { tried: false, ok: false, at: 0 };
-async function getJSON(path) { const r = await fetch(`${path}?t=${Date.now()}`, { cache: "no-store" }); if (!r.ok) throw new Error(r.status); return r.json(); }
+const DATA_BASES = dataBases();
+let dataFrom = "";
+async function getJSON(name) {
+  let err;
+  for (const b of name === "roads.json" ? ["data/"] : DATA_BASES) {
+    try { const r = await fetch(`${b}${name}?t=${Date.now()}`, { cache: "no-store" }); if (!r.ok) throw new Error(r.status); const j = await r.json(); if (name === "status.json") dataFrom = b; return j; }
+    catch (e) { err = e; }
+  }
+  throw err;
+}
 
 // ================= карта =================
 const map = L.map("map", { preferCanvas: true, zoomSnap: 0.25, minZoom: 3, maxZoom: 14, attributionControl: true });
@@ -298,20 +307,25 @@ function tickPlanes() {
 }
 // Прямой опрос adsb.lol из браузера (если сервис разрешает), между обновлениями сервера
 const CENTERS = [[51, 51], [46.5, 52.5], [43.5, 53], [50.5, 58], [46, 60], [53, 64], [45, 66], [49.5, 66.5], [43, 70.5], [51.5, 70], [47.5, 72.5], [53, 76], [44, 76.5], [48, 78.5], [50, 83], [45.5, 82.5]];
+const DIRECT_HOSTS = [["https://api.adsb.lol/v2", "adsb.lol"], ["https://opendata.adsb.fi/api/v2", "adsb.fi"], ["https://api.airplanes.live/v2", "airplanes.live"]];
 async function directPoll() {
   if (direct.tried && !direct.ok) return;
   direct.tried = true;
-  let got = 0;
-  for (const [la, lo] of CENTERS) {
-    try {
-      const r = await fetch(`https://api.adsb.lol/v2/lat/${la}/lon/${lo}/dist/250`); if (!r.ok) throw 0;
-      const d = await r.json(); const t0 = (d.now || Date.now()) / 1000;
-      mergeFlights((d.ac || []).filter((a) => a.lat != null).map((a) => { const gnd = a.alt_baro === "ground"; return { hex: a.hex, cs: (a.flight || "").trim(), lat: a.lat, lon: a.lon, alt: gnd ? 0 : (a.alt_geom ?? a.alt_baro ?? 0) * 0.3048, gs: a.gs != null ? a.gs * 0.514444 : null, trk: a.track ?? null, vr: a.baro_rate != null ? a.baro_rate * 0.00508 : null, gnd, reg: a.r, type: a.t, sq: a.squawk, t: Math.round(t0 - (a.seen_pos || 0)), src: "adsb.lol (прямо)" }; }));
-      got++;
-    } catch { if (!got) { direct.ok = false; return; } }
-    await new Promise((r) => setTimeout(r, 350));
+  const hosts = direct.host ? [direct.host] : DIRECT_HOSTS;
+  for (const host of hosts) {
+    let got = 0;
+    for (const [la, lo] of CENTERS) {
+      try {
+        const r = await fetch(`${host[0]}/lat/${la}/lon/${lo}/dist/250`); if (!r.ok) throw 0;
+        const d = await r.json(); const t0 = (d.now || Date.now()) / 1000;
+        mergeFlights((d.ac || d.aircraft || []).filter((a) => a.lat != null).map((a) => { const gnd = a.alt_baro === "ground"; return { hex: a.hex, cs: (a.flight || "").trim(), lat: a.lat, lon: a.lon, alt: gnd ? 0 : (a.alt_geom ?? a.alt_baro ?? 0) * 0.3048, gs: a.gs != null ? a.gs * 0.514444 : null, trk: a.track ?? null, vr: a.baro_rate != null ? a.baro_rate * 0.00508 : null, gnd, reg: a.r, type: a.t, sq: a.squawk, t: Math.round(t0 - (a.seen_pos || 0)), src: host[1] + " (из браузера)" }; }));
+        got++;
+      } catch { if (!got) break; }
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    if (got) { direct.ok = true; direct.host = host; direct.at = now(); return; }
   }
-  direct.ok = got > 0; direct.at = now();
+  direct.ok = false;
 }
 
 // ================= сейсмика и суда =================
@@ -413,11 +427,11 @@ function viewSector(s) {
   }
   if (s === "sources") {
     const st = D.status?.sources || {};
-    return `<div><h2>Источники данных</h2><p class="sub">Сервер (GitHub Actions) собирает данные каждые ~10 минут, страница перечитывает их каждые 5 минут.</p></div>
+    return `<div><h2>Источники данных</h2><p class="sub">Сервер (GitHub Actions) собирает данные каждые ~5 минут и кладёт в ветку live-data; страница перечитывает их каждые 5 минут${dataFrom ? " (сейчас читает из " + (dataFrom.startsWith("http") ? "ветки live-data" : "папки сайта") + ")" : ""}.</p></div>
     <table class="src"><thead><tr><th>Источник</th><th>Статус</th><th>Обновлено</th></tr></thead><tbody>
     ${Object.entries(SRCNAME).map(([k, n]) => { const s = st[k]; return `<tr><td>${n}<div class="note">${SRCDESC[k]}</div></td><td>${s ? (s.ok ? pill(0, s.count != null ? s.count + " шт." : "ok") : pill(3, "ошибка")) : pill(-1, "нет")}${s && !s.ok ? `<div class="note">${esc(s.error)}</div>` : ""}</td><td>${s ? ago(Date.parse(s.at) / 1000) : "—"}</td></tr>`; }).join("")}
     <tr><td>Дороги OSM<div class="note">Геометрия магистралей, раз в неделю</div></td><td>${D.roads ? pill(0, D.roads.ways.length + " уч.") : pill(-1, "схема")}</td><td>${D.roads ? ago(D.roads.t) : "—"}</td></tr>
-    <tr><td>adsb.lol из браузера<div class="note">Самолёты раз в минуту напрямую</div></td><td>${direct.ok ? pill(0, "работает") : direct.tried ? pill(-1, "недоступно") : pill(-1, "проверка")}</td><td>${direct.at ? ago(direct.at) : "—"}</td></tr>
+    <tr><td>ADS-B из браузера<div class="note">Самолёты раз в минуту напрямую${direct.host ? ": " + direct.host[1] : ""}</div></td><td>${direct.ok ? pill(0, "работает") : direct.tried ? pill(-1, "недоступно") : pill(-1, "проверка")}</td><td>${direct.at ? ago(direct.at) : "—"}</td></tr>
     <tr><td>Подложки<div class="note">CARTO, Esri, OpenRailwayMap, NASA GIBS</div></td><td>${pill(0, "тайлы")}</td><td>онлайн</td></tr>
     </tbody></table>
     <div class="sec-h">Пробки (TomTom)</div><p class="sub">Бесплатный ключ: developer.tomtom.com (2 500 запросов в сутки). Ключ хранится только в этом браузере.</p>
@@ -505,7 +519,7 @@ function render() {
 
 function renderKpis() {
   const air = airborne().length, gnd = [...planes.values()].filter((p) => p.gnd).length;
-  const ai = AIRPORTS.map((a) => metarInfo(M[a.icao])); const aBad = ai.filter((i) => i.sev >= 2).length, aOk = ai.filter((i) => i.sev === 0 || i.sev === 1).length;
+  const ai = AIRPORTS.map((a) => metarInfo(M[a.icao])); const aBad = ai.filter((i) => i.sev >= 2).length, aOk = ai.filter((i) => i.sev === 0 || i.sev === 1).length, aNo = ai.filter((i) => i.sev < 0).length;
   let bad = 0, worst = 0; for (const r of ROADS.refs.values()) { bad += r.km[2] + r.km[3]; worst = Math.max(worst, r.km[3]); }
   let cold = null; for (const c of CITIES) { const w = W.byId[c.id]; if (w && w.T != null && (!cold || w.T < cold.w.T)) cold = { c, w }; }
   const danger = CITIES.filter((c) => (W.byId[c.id]?.risk.sev ?? 0) >= 2).length;
@@ -513,7 +527,7 @@ function renderKpis() {
   const st = Object.values(D.status?.sources || {}); const ok = st.filter((s) => s.ok).length;
   const K = [
     ["air", "Бортов в воздухе", air, `${gnd} на земле · ADS-B`, ""],
-    ["air", "Аэропорты в норме", `${aOk}/${AIRPORTS.length}`, aBad ? `${aBad} ниже минимумов / IFR` : "по METAR", aBad ? "alert" : ""],
+    ["air", "Аэропорты в норме", AIRPORTS.length - aNo ? `${aOk}/${AIRPORTS.length - aNo}` : "—", [aBad ? `${aBad} IFR/LIFR` : "", aNo ? `${aNo} без сводки` : ""].filter(Boolean).join(" · ") || "по METAR", aBad ? "alert" : ""],
     ["roads", "Трассы в зоне риска", Math.round(bad).toLocaleString("ru-RU") + " км", worst > 1 ? `метель/лёд: ${Math.round(worst)} км` : `из ${Math.round(ROADS.total).toLocaleString("ru-RU")} км`, worst > 1 ? "alert" : bad > 50 ? "warn" : ""],
     ["weather", "Опасная погода", danger + " гор.", danger ? "гололёд, снег, метель" : "в городах спокойно", danger ? "warn" : ""],
     ["weather", "Холоднее всего", cold ? sgn(cold.w.T) : "—", cold ? cold.c.name : "", ""],
@@ -558,7 +572,7 @@ const PERIOD = 300;
 let next = 0, loading = false;
 async function refresh() {
   if (loading) return; loading = true;
-  const res = await Promise.allSettled(["status", "flights", "metar", "weather", "quakes", "ships", "roads"].map((k) => getJSON(`data/${k}.json`).then((d) => (D[k] = d))));
+  const res = await Promise.allSettled(["status", "flights", "metar", "weather", "quakes", "ships", "roads"].map((k) => getJSON(`${k}.json`).then((d) => (D[k] = d))));
   const okCount = res.filter((r) => r.status === "fulfilled").length;
   indexWeather();
   if (D.flights) mergeFlights(D.flights.ac || [], D.flights.t);

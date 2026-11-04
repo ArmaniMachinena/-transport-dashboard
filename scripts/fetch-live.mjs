@@ -1,11 +1,10 @@
-// Сбор живых данных для дашборда. Запускается в GitHub Actions каждые ~10 минут.
+// Сбор живых данных для дашборда. Запускается в GitHub Actions каждые ~5 минут (цикл внутри часовой задачи).
 // Каждый источник независим: если один упал, остальные всё равно сохраняются.
 // Использование: node scripts/fetch-live.mjs <папка вывода>
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, readFile, mkdir } from "node:fs/promises";
 import { AIRPORTS, BBOX, weatherPoints } from "../assets/config.js";
 
 const OUT = process.argv[2] || "_site/data";
-const SITE = (process.env.SITE_URL || "").replace(/\/$/, "");
 const UA = "mintrans-dashboard/1.0 (+https://github.com)";
 const status = { generated: new Date().toISOString(), sources: {} };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -33,10 +32,9 @@ async function source(name, file, fn) {
     if (p) { await save(file, p); status.sources[name].kept = p.t; }
   }
 }
-// Прошлый файл с опубликованного сайта (чтобы не дёргать API чаще, чем нужно)
+// Прошлый файл из папки вывода (там лежит результат предыдущего прохода)
 async function previous(name) {
-  if (!SITE) return null;
-  try { return await get(`${SITE}/data/${name}?t=${Date.now()}`, { timeout: 15000 }); } catch { return null; }
+  try { return JSON.parse(await readFile(`${OUT}/${name}`, "utf8")); } catch { return null; }
 }
 const inBox = (lat, lon) => lat >= BBOX.latMin && lat <= BBOX.latMax && lon >= BBOX.lonMin && lon <= BBOX.lonMax;
 

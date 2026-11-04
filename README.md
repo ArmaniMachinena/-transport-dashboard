@@ -23,9 +23,11 @@
 
 ## Как это работает
 
-- `.github/workflows/live.yml` — каждые 10 минут собирает данные (`scripts/fetch-live.mjs`) и публикует сайт.
+- `.github/workflows/live.yml` — раз в час стартует задача, которая ~55 минут работает в цикле: каждые ~5 минут собирает данные (`scripts/fetch-live.mjs`) и публикует их в ветку `live-data` (одним коммитом, история не растёт). Планировщик GitHub не умеет запускать задачи чаще раза в час, поэтому цикл внутри.
+- `.github/workflows/pages.yml` — при каждом изменении `main` публикует сайт на GitHub Pages (в Settings → Pages источник должен быть **GitHub Actions**).
 - `.github/workflows/roads.yml` — раз в неделю загружает геометрию дорог из OSM (`scripts/fetch-roads.mjs`) в `data/roads.json`.
-- Страница (`index.html`, `assets/`) перечитывает данные каждые 5 минут.
+- `.github/workflows/check.yml` — ежедневная самопроверка: открывает сайт в headless-браузере, кликает по объектам, пишет отчёт в журнал и прикладывает скриншоты.
+- Страница (`index.html`, `assets/`) каждые 5 минут читает данные из ветки `live-data` (через raw.githubusercontent.com), а если та недоступна — из папки `data/` самого сайта.
 
 ## Необязательные ключи (Settings → Secrets and variables → Actions)
 

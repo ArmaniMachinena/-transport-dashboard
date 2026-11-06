@@ -82,6 +82,27 @@ const srcTable = await page.$$eval("table.src tbody tr", (trs) => trs.map((tr) =
 console.log("Источники:"); srcTable.forEach((r) => console.log("  •", r));
 await page.screenshot({ path: `${SHOTS}/4-sources.png` });
 
+// Панель слоёв: подложка Google, слои ЖД и температуры NASA
+const tileHosts = {};
+page.on("response", (r) => { try { const h = new URL(r.url()).host; if (/google|openrailwaymap|gibs\.earthdata|arcgisonline|eox|rainviewer|2gis|openstreetmap|opentopomap/.test(h)) { tileHosts[h] = tileHosts[h] || { ok: 0, fail: 0 }; r.ok() ? tileHosts[h].ok++ : tileHosts[h].fail++; } } catch {} });
+if (!(await page.$eval("main", (m) => m.classList.contains("lp-open")))) await page.click("#lpToggle");
+await page.waitForTimeout(300);
+const nBase = await count("#baseSel option"), nOv = await count("[data-ov]");
+await page.selectOption("#baseSel", "g-sat");
+await page.check('[data-ov="orm"]'); await page.check('[data-ov="gibs-lst"]'); await page.check('[data-ov="rv-radar"]');
+await page.waitForTimeout(6000);
+await page.screenshot({ path: `${SHOTS}/6-layers.png` });
+console.log(`Панель слоёв: подложек ${nBase}, слоёв ${nOv}; после переключения на Google + ЖД + NASA LST + радар:`);
+for (const [h, c] of Object.entries(tileHosts)) console.log(`  • ${h}: ok ${c.ok}, ошибок ${c.fail}`);
+if (nBase < 30 || nOv < 30) problems.push("Каталог слоёв неполный");
+const gok = Object.entries(tileHosts).filter(([h]) => /google/.test(h)).reduce((a, [, c]) => a + c.ok, 0);
+const nasa = tileHosts["gibs.earthdata.nasa.gov"] || { ok: 0, fail: 0 };
+if (!gok) problems.push("Тайлы Google не загрузились");
+if (!nasa.ok) problems.push("Тайлы NASA GIBS не загрузились (" + nasa.fail + " ошибок)");
+await page.selectOption("#baseSel", "esri-dark");
+await page.uncheck('[data-ov="orm"]'); await page.uncheck('[data-ov="gibs-lst"]'); await page.uncheck('[data-ov="rv-radar"]');
+await page.click("#lpClose");
+
 // Телефон
 await page.setViewportSize({ width: 400, height: 850 });
 await page.click('.tabs [data-sector="all"]');

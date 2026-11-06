@@ -3,6 +3,7 @@
 // Использование: node scripts/fetch-live.mjs <папка вывода>
 import { writeFile, readFile, mkdir } from "node:fs/promises";
 import { AIRPORTS, BBOX, weatherPoints } from "../assets/config.js";
+import { CATALOG, gibsLayerId } from "../assets/layers.js";
 
 const OUT = process.argv[2] || "_site/data";
 const UA = "mintrans-dashboard/1.0 (+https://github.com)";
@@ -155,6 +156,24 @@ await source("ships", "ships.json", async () => {
   const list = [...ships.values()].filter((s) => s.lat != null);
   await save("ships.json", { t: Math.round(Date.now() / 1000), ships: list });
   return { count: list.length };
+});
+
+// ---------- 6. NASA GIBS: последняя доступная дата каждого слоя снимков ----------
+await source("gibs", "gibs.json", async () => {
+  const prev = await previous("gibs.json");
+  if (prev && Date.now() / 1000 - prev.t < 6 * 3600) { await save("gibs.json", prev); return { count: Object.keys(prev.dates).length, reused: true }; }
+  const want = new Set(CATALOG.filter((l) => l.gibs).map((l) => gibsLayerId(l.url)));
+  const xml = await get("https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/1.0.0/WMTSCapabilities.xml", { json: false, timeout: 120000 });
+  const dates = {};
+  for (const m of xml.matchAll(/<Layer>([\s\S]*?)<\/Layer>/g)) {
+    const id = m[1].match(/<ows:Identifier>([^<]+)<\/ows:Identifier>/)?.[1];
+    if (!id || !want.has(id)) continue;
+    const d = m[1].match(/<Dimension>[\s\S]*?<Default>([^<]*)<\/Default>/)?.[1];
+    if (d) dates[id] = d.slice(0, 10);
+  }
+  if (!Object.keys(dates).length) throw new Error("слои не найдены в capabilities");
+  await save("gibs.json", { t: Math.round(Date.now() / 1000), dates });
+  return { count: Object.keys(dates).length };
 });
 
 await save("status.json", status);

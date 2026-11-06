@@ -51,7 +51,7 @@ export const CATALOG = [
   { id: "eox-terrain-full", kind: "base", group: "Топография", name: "EOX Terrain", url: EOX("terrain", "jpg"), native: 16, max: 18, attr: A.eox },
 
   { id: "eox-s2", kind: "base", group: "Спутник и космос", name: "Sentinel-2 без облаков (EOX)", url: EOX("s2cloudless-2024", "jpg"), native: 17, max: 19, attr: A.eox, dark: true },
-  { id: "gibs-viirs", kind: "base", group: "Спутник и космос", name: "NASA VIIRS, снимок за дату", url: gibs("VIIRS_SNPP_CorrectedReflectance_TrueColor", 9, "jpg"), native: 9, max: 14, attr: A.gibs, gibs: true, dark: true },
+  { id: "gibs-viirs", kind: "base", group: "Спутник и космос", name: "NASA VIIRS NOAA-20, снимок за дату", url: gibs("VIIRS_NOAA20_CorrectedReflectance_TrueColor", 9, "jpg"), native: 9, max: 14, attr: A.gibs, gibs: true, dark: true },
   { id: "gibs-modis", kind: "base", group: "Спутник и космос", name: "NASA MODIS Terra, снимок за дату", url: gibs("MODIS_Terra_CorrectedReflectance_TrueColor", 9, "jpg"), native: 9, max: 14, attr: A.gibs, gibs: true, dark: true },
   { id: "eox-blackmarble", kind: "base", group: "Спутник и космос", name: "Ночные огни (Black Marble)", url: EOX("blackmarble", "jpg"), native: 8, max: 12, attr: A.eox + ", NASA Black Marble", dark: true },
   { id: "eox-bluemarble", kind: "base", group: "Спутник и космос", name: "Blue Marble", url: EOX("bluemarble", "jpg"), native: 8, max: 12, attr: A.eox + ", NASA Blue Marble" },
@@ -78,16 +78,14 @@ export const CATALOG = [
   { id: "pipes", kind: "data", group: "Живые данные", name: "Трубопроводы (схема)" },
 
   { id: "rv-radar", kind: "overlay", group: "Погода и климат", name: "Осадки по радару (RainViewer)", url: "https://tilecache.rainviewer.com{rv}/256/{z}/{x}/{y}/2/1_1.png", rv: "radar", native: 7, max: 14, attr: A.rv, op: 0.8, note: "радаров в Казахстане мало, покрытие частичное" },
-  { id: "rv-ir", kind: "overlay", group: "Погода и климат", name: "Облачность, спутник ИК (RainViewer)", url: "https://tilecache.rainviewer.com{rv}/256/{z}/{x}/{y}/0/0_0.png", rv: "ir", native: 7, max: 14, attr: A.rv, op: 0.6 },
-  { id: "gibs-lst", kind: "overlay", group: "Погода и климат", name: "Температура поверхности, день (NASA MODIS)", url: gibs("MODIS_Terra_L3_Land_Surface_Temp_Daily_Day", 7, "png"), native: 7, max: 12, attr: A.gibs, gibs: true, op: 0.7 },
-  { id: "gibs-lst-night", kind: "overlay", group: "Погода и климат", name: "Температура поверхности, ночь (NASA MODIS)", url: gibs("MODIS_Terra_L3_Land_Surface_Temp_Daily_Night", 7, "png"), native: 7, max: 12, attr: A.gibs, gibs: true, op: 0.7 },
-  { id: "gibs-snow", kind: "overlay", group: "Погода и климат", name: "Снежный покров (NASA MODIS)", url: gibs("MODIS_Terra_L3_NDSI_Snow_Cover_Daily", 8, "png"), native: 8, max: 12, attr: A.gibs, gibs: true, op: 0.75 },
-  { id: "gibs-fires", kind: "overlay", group: "Погода и климат", name: "Пожары и тепловые аномалии (NASA VIIRS)", url: gibs("VIIRS_SNPP_Thermal_Anomalies_375m_Day", 8, "png"), native: 8, max: 12, attr: A.gibs, gibs: true, op: 0.9 },
+  { id: "gibs-lst", kind: "overlay", group: "Погода и климат", name: "Температура поверхности, день (NASA MODIS)", url: gibs("MODIS_Terra_Land_Surface_Temp_Day", 7, "png"), native: 7, max: 12, attr: A.gibs, gibs: true, op: 0.7 },
+  { id: "gibs-lst-night", kind: "overlay", group: "Погода и климат", name: "Температура поверхности, ночь (NASA MODIS)", url: gibs("MODIS_Terra_Land_Surface_Temp_Night", 7, "png"), native: 7, max: 12, attr: A.gibs, gibs: true, op: 0.7 },
+  { id: "gibs-snow", kind: "overlay", group: "Погода и климат", name: "Снежный покров (NASA VIIRS)", url: gibs("VIIRS_NOAA20_NDSI_Snow_Cover", 8, "png"), native: 8, max: 12, attr: A.gibs, gibs: true, op: 0.75 },
   { id: "gibs-aod", kind: "overlay", group: "Погода и климат", name: "Пыль и аэрозоль (NASA MODIS AOD)", url: gibs("MODIS_Terra_Aerosol", 6, "png"), native: 6, max: 10, attr: A.gibs, gibs: true, op: 0.7 },
   { id: "gibs-airtemp", kind: "overlay", group: "Погода и климат", name: "Температура воздуха у поверхности (NASA AIRS)", url: gibs("AIRS_L2_Surface_Air_Temperature_Day", 6, "png"), native: 6, max: 10, attr: A.gibs, gibs: true, op: 0.7 },
-  { id: "gibs-precip", kind: "overlay", group: "Погода и климат", name: "Осадки за сутки (NASA IMERG)", url: gibs("IMERG_Precipitation_Rate", 6, "png"), native: 6, max: 10, attr: A.gibs, gibs: true, op: 0.75 },
-  { id: "gibs-sst", kind: "overlay", group: "Погода и климат", name: "Температура воды Каспия (NASA MUR SST)", url: gibs("GHRSST_L4_MUR_Sea_Surface_Temperature", 7, "png"), native: 7, max: 11, attr: A.gibs, gibs: true, op: 0.8 },
-  { id: "gibs-night", kind: "overlay", group: "Погода и климат", name: "Ночные огни за дату (NASA VIIRS)", url: gibs("VIIRS_SNPP_DayNightBand_At_Sensor_Radiance", 8, "png"), native: 8, max: 12, attr: A.gibs, gibs: true, op: 0.9 },
+  { id: "gibs-precip", kind: "overlay", group: "Погода и климат", name: "Осадки за сутки (NASA IMERG, задержка 1–2 дня)", url: gibs("IMERG_Precipitation_Rate", 6, "png"), native: 6, max: 10, attr: A.gibs, gibs: true, op: 0.75 },
+  { id: "gibs-sst", kind: "overlay", group: "Погода и климат", name: "Температура воды Каспия (NASA MUR SST, задержка 1–2 дня)", url: gibs("GHRSST_L4_MUR_Sea_Surface_Temperature", 7, "png"), native: 7, max: 11, attr: A.gibs, gibs: true, op: 0.8 },
+  { id: "gibs-night", kind: "overlay", group: "Погода и климат", name: "Ночные огни за дату (NASA VIIRS)", url: gibs("VIIRS_NOAA20_DayNightBand_At_Sensor_Radiance", 8, "png"), native: 8, max: 12, attr: A.gibs, gibs: true, op: 0.9 },
   { id: "owm-temp", kind: "overlay", group: "Погода и климат", name: "Температура (OpenWeatherMap)", url: "https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid={key}", max: 18, attr: "OpenWeatherMap", key: "owm", op: 0.7 },
   { id: "owm-precip", kind: "overlay", group: "Погода и климат", name: "Осадки (OpenWeatherMap)", url: "https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid={key}", max: 18, attr: "OpenWeatherMap", key: "owm", op: 0.8 },
   { id: "owm-clouds", kind: "overlay", group: "Погода и климат", name: "Облачность (OpenWeatherMap)", url: "https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid={key}", max: 18, attr: "OpenWeatherMap", key: "owm", op: 0.7 },
@@ -107,14 +105,19 @@ export const CATALOG = [
   { id: "esri-places", kind: "overlay", group: "Справочные и рельеф", name: "Границы и названия (Esri)", url: esri("Reference/World_Boundaries_and_Places"), max: 19, attr: A.esri, op: 1 },
   { id: "esri-dark-ref", kind: "overlay", group: "Справочные и рельеф", name: "Подписи для тёмной схемы (Esri)", url: esri("Canvas/World_Dark_Gray_Reference"), native: 16, max: 18, attr: A.esri, op: 1 },
   { id: "eox-overlay", kind: "overlay", group: "Справочные и рельеф", name: "Дороги и подписи (EOX)", url: EOX("overlay_bright", "png"), native: 16, max: 18, attr: A.eox, op: 1 },
-  { id: "esri-hillshade", kind: "overlay", group: "Справочные и рельеф", name: "Тени рельефа (Esri Hillshade)", url: esri("Elevation/World_Hillshade"), native: 16, max: 18, attr: A.esri, op: 0.45 },
-  { id: "gibs-coast", kind: "overlay", group: "Справочные и рельеф", name: "Береговые линии (NASA)", url: `${GIBS}Coastlines_15m/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.png`, native: 9, max: 12, attr: A.gibs, op: 1 }
+  { id: "esri-hillshade", kind: "overlay", group: "Справочные и рельеф", name: "Тени рельефа (Esri Hillshade)", url: esri("Elevation/World_Hillshade"), native: 16, max: 18, attr: A.esri, op: 0.45 }
 ];
 
 export const GROUP_ORDER = {
   base: ["Схемы", "Google", "Esri", "Топография", "Спутник и космос", "С ключом"],
   overlay: ["Живые данные", "Погода и климат", "Транспорт и логистика", "Справочные и рельеф"]
 };
+
+// Идентификатор слоя NASA GIBS из шаблона URL
+export function gibsLayerId(url) {
+  const m = url.match(/\/best\/([^/]+)\/default\//);
+  return m ? m[1] : null;
+}
 
 // Дата снимка по умолчанию: вчера по UTC (данные за сегодня ещё не обработаны)
 export function defaultGibsDate() {

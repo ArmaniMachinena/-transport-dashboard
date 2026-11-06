@@ -25,9 +25,13 @@
 <div class="kpis" id="kpis"></div>
 
 <main>
+  <aside class="panel lpanel" id="lpanel" aria-label="Подложки и слои карты">
+    <div class="lp-head"><h3>Карта: подложки и слои</h3><button type="button" class="btn" id="lpClose" title="Скрыть панель">×</button></div>
+    <div class="lp-body" id="lpBody"></div>
+  </aside>
   <div class="mapbox">
     <div id="map" aria-label="Карта транспорта Казахстана"></div>
-    <div class="layers" id="layers" role="toolbar" aria-label="Слои карты"></div>
+    <button type="button" class="btn lp-toggle" id="lpToggle" aria-expanded="false" aria-controls="lpanel">☰ Слои</button>
     <div class="legend" id="legend"></div>
   </div>
   <div class="side">

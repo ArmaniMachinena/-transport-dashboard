@@ -1,5 +1,6 @@
 // Ситуационный центр Минтранса — клиентская часть.
 import { AIRPORTS, CITIES, PORTS, BORDERS, PIPES, ROAD_CORRIDORS, CLOSED_SOURCES, GRID, dataBases } from "./config.js";
+import { CATALOG, KEYS, GROUP_ORDER, gibsLayerId, defaultGibsDate } from "./layers.js";
 
 // ================= утилиты =================
 const $ = (id) => document.getElementById(id);
@@ -60,7 +61,7 @@ const tempColor = (t) => {
 };
 
 // ================= данные =================
-const D = { flights: null, metar: null, weather: null, quakes: null, ships: null, status: null, roads: null };
+const D = { flights: null, metar: null, weather: null, quakes: null, ships: null, status: null, roads: null, gibs: null };
 const planes = new Map(); // hex -> {..., marker}
 let direct = { tried: false, ok: false, at: 0 };
 const DATA_BASES = dataBases();
@@ -75,75 +76,157 @@ async function getJSON(name) {
 }
 
 // ================= карта =================
-const map = L.map("map", { preferCanvas: true, zoomSnap: 0.25, minZoom: 3, maxZoom: 14, attributionControl: true });
+const map = L.map("map", { preferCanvas: true, zoomSnap: 0.25, minZoom: 3, maxZoom: 19, attributionControl: true });
 map.fitBounds([[40.6, 46.5], [55.4, 87.3]]);
 const canvas = L.canvas({ padding: 0.3 });
 const svgR = L.svg({ padding: 0.3 });
-const BASES = {
-  dark: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { subdomains: "abcd", maxZoom: 19, attribution: "© OpenStreetMap, © CARTO" }),
-  sat: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 18, attribution: "Esri World Imagery" }),
-  osm: L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" })
-};
-let base = store.get("base", "dark"); if (!BASES[base]) base = "dark"; BASES[base].addTo(map);
 
-const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-const LAYERS = {
-  planes: { name: "Самолёты", group: L.layerGroup(), on: true },
-  airports: { name: "Аэропорты", group: L.layerGroup(), on: true },
-  roads: { name: "Дороги", group: L.layerGroup(), on: true },
-  temp: { name: "Температура", group: L.layerGroup(), on: false },
-  rail: { name: "ЖД", group: L.tileLayer("https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png", { subdomains: "abc", maxZoom: 19, opacity: 0.75, attribution: "OpenRailwayMap" }), on: false },
-  nasa: { name: "Снимок NASA", group: L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${yesterday}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, { maxNativeZoom: 9, maxZoom: 14, opacity: 0.85, attribution: "NASA GIBS / VIIRS" }), on: false },
-  pipes: { name: "Трубопроводы", group: L.layerGroup(), on: false },
-  quakes: { name: "Сейсмика", group: L.layerGroup(), on: true },
-  ships: { name: "Суда", group: L.layerGroup(), on: true },
-  borders: { name: "Границы", group: L.layerGroup(), on: true },
-  traffic: { name: "Пробки", group: null, on: false }
-};
-const saved = store.get("layers", null);
-if (saved) for (const k in LAYERS) if (k in saved) LAYERS[k].on = saved[k];
-const cityLayer = L.layerGroup().addTo(map);
-function trafficLayer() {
-  const key = store.get("tomtom", "");
-  if (!key) return null;
-  if (!LAYERS.traffic.group || LAYERS.traffic.key !== key) {
-    LAYERS.traffic.group = L.tileLayer(`https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=${encodeURIComponent(key)}`, { maxZoom: 18, opacity: 0.9, attribution: "TomTom Traffic" });
-    LAYERS.traffic.key = key;
-  }
-  return LAYERS.traffic.group;
+// ---------- слои живых данных страницы ----------
+const LAYERS = {};
+for (const id of ["planes", "airports", "roads", "temp", "cities", "quakes", "ships", "borders", "pipes"]) LAYERS[id] = { group: L.layerGroup() };
+const cityLayer = LAYERS.cities.group;
+
+// ---------- каталог подложек и тайловых слоёв ----------
+const CAT = Object.fromEntries(CATALOG.map((l) => [l.id, l]));
+const DATA_DEFAULT_ON = { planes: true, airports: true, roads: true, cities: true, quakes: true, ships: true, borders: true, temp: false, pipes: false };
+const KEYSTORE = store.get("keys", null) || { tomtom: store.get("tomtom", "") || "" };
+const keyFor = (name) => (KEYSTORE[name] || "").trim();
+let base = store.get("base2", null) || ({ dark: "esri-dark", sat: "esri-sat", osm: "osm" }[store.get("base", "")] || "esri-dark");
+if (!CAT[base] || CAT[base].kind !== "base" || (CAT[base].key && !keyFor(CAT[base].key))) base = "esri-dark";
+const OV = store.get("ov", null) || {}; // id -> {on, op}
+for (const l of CATALOG) if (l.kind !== "base" && !OV[l.id]) OV[l.id] = { on: l.kind === "data" ? !!DATA_DEFAULT_ON[l.id] : false, op: l.op ?? 1 };
+let gibsDate = store.get("gibsDate", "") || defaultGibsDate();
+if (gibsDate > new Date().toISOString().slice(0, 10)) gibsDate = defaultGibsDate();
+const TILES = {}; // id -> L.tileLayer
+let rvPath = null, rvAt = 0;
+
+function gibsDateFor(l) { const id = gibsLayerId(l.url), latest = D.gibs?.dates?.[id]; return latest && latest < gibsDate ? latest : gibsDate; }
+function tileUrl(l) {
+  let u = l.url;
+  if (l.gibs) u = u.replace("{date}", gibsDateFor(l));
+  if (l.key) u = u.replace("{key}", encodeURIComponent(keyFor(l.key)));
+  if (l.rv) u = u.replace("{rv}", rvPath || "/v2/radar/nowcast_0");
+  return u;
+}
+function makeTile(l) {
+  const t = L.tileLayer(tileUrl(l), { subdomains: l.sub || "abc", maxZoom: l.max || 19, maxNativeZoom: l.native || undefined, minZoom: l.min || 0, attribution: l.attr || "", opacity: l.kind === "base" ? 1 : OV[l.id]?.op ?? l.op ?? 1, detectRetina: false, crossOrigin: false, zIndex: l.kind === "base" ? 1 : 5, errorTileUrl: "" });
+  t.on("tileerror", () => { t._errs = (t._errs || 0) + 1; });
+  return t;
+}
+function tileFor(id) { const l = CAT[id]; if (!l?.url) return null; if (!TILES[id]) TILES[id] = makeTile(l); return TILES[id]; }
+function refreshTileUrl(id) { const l = CAT[id]; if (TILES[id] && l?.url) TILES[id].setUrl(tileUrl(l)); }
+async function updateRainviewer() {
+  if (now() - rvAt < 540) return;
+  try { const j = await (await fetch("https://api.rainviewer.com/public/weather-maps.json")).json(); const p = j.radar?.past?.at(-1)?.path; if (p && p !== rvPath) { rvPath = p; rvAt = now(); for (const l of CATALOG) if (l.rv) refreshTileUrl(l.id); } else rvAt = now(); } catch {}
+}
+function setBase(id) {
+  const l = CAT[id]; if (!l || l.kind !== "base") return;
+  if (l.key && !keyFor(l.key)) { openKeys(l.key); return; }
+  const old = TILES[base]; if (old && map.hasLayer(old)) map.removeLayer(old);
+  base = id; store.set("base2", base);
+  const t = tileFor(id); t.addTo(map); t.bringToBack();
+  document.body.classList.toggle("light-base", !l.dark);
+  renderPanel();
+}
+function layerOn(id) { return !!OV[id]?.on; }
+function setLayer(id, on, op) {
+  const l = CAT[id]; if (!l || l.kind === "base") return;
+  if (on && l.key && !keyFor(l.key)) { openKeys(l.key); return; }
+  OV[id] = OV[id] || { on: false, op: l.op ?? 1 };
+  if (on != null) OV[id].on = on;
+  if (op != null) OV[id].op = op;
+  applyLayers();
 }
 function applyLayers() {
-  for (const [k, l] of Object.entries(LAYERS)) {
-    const g = k === "traffic" ? trafficLayer() : l.group;
+  for (const l of CATALOG) {
+    if (l.kind === "base") continue;
+    const g = l.kind === "data" ? LAYERS[l.id]?.group : tileFor(l.id);
     if (!g) continue;
-    if (l.on && !map.hasLayer(g)) g.addTo(map);
-    if (!l.on && map.hasLayer(g)) map.removeLayer(g);
+    const st = OV[l.id];
+    if (st.on && !map.hasLayer(g)) g.addTo(map);
+    if (!st.on && map.hasLayer(g)) map.removeLayer(g);
+    if (l.kind !== "data" && g.setOpacity && g.options.opacity !== st.op) g.setOpacity(st.op);
+    if (l.rv && st.on) updateRainviewer();
   }
-  store.set("layers", Object.fromEntries(Object.entries(LAYERS).map(([k, l]) => [k, l.on])));
-  renderLayerBar(); renderLegend();
-}
-function renderLayerBar() {
-  $("layers").innerHTML = Object.entries(LAYERS).map(([k, l]) => `<button type="button" data-layer="${k}" aria-pressed="${l.on}">${l.name}</button>`).join("") +
-    `<span class="sep"></span>` + [["dark", "Схема"], ["sat", "Спутник"], ["osm", "OSM"]].map(([k, n]) => `<button type="button" data-base="${k}" aria-pressed="${base === k}">${n}</button>`).join("");
+  store.set("ov", OV);
+  renderPanel(); renderLegend();
 }
 function renderLegend() {
   const parts = [];
-  if (LAYERS.roads.on) parts.push(`<span>Дороги по погоде:</span><span><i style="background:var(--s0)"></i>норма</span><span><i style="background:var(--s1)"></i>осадки/ветер</span><span><i style="background:var(--s2)"></i>гололёд/снег</span><span><i style="background:var(--s3)"></i>метель/лёд</span>`);
-  if (LAYERS.airports.on) parts.push(`<span>Аэропорты: кольцо по METAR</span>`);
-  if (LAYERS.temp.on) parts.push(`<span><i style="background:linear-gradient(90deg,${tempColor(-25)},${tempColor(0)},${tempColor(25)})"></i>−25° … +25°</span>`);
-  if (LAYERS.rail.on) parts.push(`<span><i style="background:#ff8100"></i>ЖД магистрали (OpenRailwayMap)</span>`);
-  $("legend").innerHTML = parts.join("") || "<span>Слои выключены</span>";
+  if (layerOn("roads")) parts.push(`<span>Дороги по погоде:</span><span><i style="background:var(--s0)"></i>норма</span><span><i style="background:var(--s1)"></i>осадки/ветер</span><span><i style="background:var(--s2)"></i>гололёд/снег</span><span><i style="background:var(--s3)"></i>метель/лёд</span>`);
+  if (layerOn("airports")) parts.push(`<span>Аэропорты: кольцо по METAR</span>`);
+  if (layerOn("temp")) parts.push(`<span><i style="background:linear-gradient(90deg,${tempColor(-25)},${tempColor(0)},${tempColor(25)})"></i>−25° … +25°</span>`);
+  for (const l of CATALOG) if (l.gibs && l.kind !== "base" && layerOn(l.id)) parts.push(`<span>${esc(l.name.replace(/\s*\(.*$/, ""))}: снимок ${gibsDateFor(l).split("-").reverse().join(".")}</span>`);
+  $("legend").innerHTML = parts.join("");
   $("legend").hidden = !parts.length;
 }
-document.addEventListener("click", (e) => {
-  const b = e.target.closest("[data-layer]");
-  if (b) {
-    const k = b.dataset.layer;
-    if (k === "traffic" && !store.get("tomtom", "")) { go({ sector: "sources" }); setTimeout(() => $("tomtomKey")?.focus(), 50); return; }
-    LAYERS[k].on = !LAYERS[k].on; applyLayers(); return;
+
+// ---------- левая панель ----------
+const lpState = { open: store.get("lpOpen", null) };
+function lpOpen() { return lpState.open ?? window.innerWidth > 1400; }
+function setLp(open) { lpState.open = open; store.set("lpOpen", open); document.querySelector("main").classList.toggle("lp-open", open); $("lpToggle").setAttribute("aria-expanded", open); setTimeout(() => map.invalidateSize(), 220); }
+const fmtD = (d) => d ? d.split("-").reverse().join(".") : "—";
+function badge(l) {
+  const b = [];
+  if (l.key) b.push(`<i class="bd ${keyFor(l.key) ? "ok" : ""}" title="нужен ключ ${KEYS[l.key].name}">ключ</i>`);
+  if (l.unofficial) b.push(`<i class="bd" title="неофициальный доступ, может отключиться">неофиц.</i>`);
+  if (l.gibs && l.kind !== "base") b.push(`<i class="bd" title="дата снимка">${fmtD(gibsDateFor(l))}</i>`);
+  return b.join("");
+}
+function renderPanel() {
+  const main = document.querySelector("main"); main.classList.toggle("lp-open", lpOpen());
+  $("lpToggle").setAttribute("aria-expanded", lpOpen());
+  const nOn = CATALOG.filter((l) => l.kind !== "base" && layerOn(l.id)).length;
+  $("lpToggle").innerHTML = `<span>☰ Слои</span><b>${nOn}</b>`;
+  const bl = CAT[base];
+  let h = `<div class="lp-sec"><div class="sec-h">Подложка</div><select id="baseSel" class="sel" aria-label="Подложка">`;
+  for (const g of GROUP_ORDER.base) {
+    const items = CATALOG.filter((l) => l.kind === "base" && l.group === g);
+    h += `<optgroup label="${esc(g)}">` + items.map((l) => `<option value="${l.id}" ${l.id === base ? "selected" : ""} ${l.key && !keyFor(l.key) ? 'class="needkey"' : ""}>${esc(l.name)}${l.key && !keyFor(l.key) ? " 🔑" : ""}${l.unofficial ? " *" : ""}</option>`).join("") + `</optgroup>`;
   }
-  const bb = e.target.closest("[data-base]");
-  if (bb) { map.removeLayer(BASES[base]); base = bb.dataset.base; BASES[base].addTo(map); BASES[base].bringToBack(); store.set("base", base); renderLayerBar(); }
+  h += `</select><div class="lp-note">${bl.unofficial ? "* неофициальный доступ к тайлам, может отключиться" : bl.gibs ? `снимок за ${fmtD(gibsDateFor(bl))}` : esc(bl.attr || "")}</div></div>`;
+  h += `<div class="lp-sec"><div class="sec-h">Снимки NASA: дата</div><div class="lp-row"><input type="date" id="gibsDate" class="sel" value="${gibsDate}" max="${new Date().toISOString().slice(0, 10)}"><button type="button" class="btn" id="gibsYesterday">вчера</button></div><div class="lp-note">если за выбранную дату снимка ещё нет, берётся последний доступный</div></div>`;
+  for (const g of GROUP_ORDER.overlay) {
+    const items = CATALOG.filter((l) => l.kind !== "base" && l.group === g);
+    const open = store.get("grp_" + g, true);
+    h += `<details class="lp-grp" data-grp="${esc(g)}" ${open ? "open" : ""}><summary>${esc(g)} <b>${items.filter((l) => layerOn(l.id)).length}/${items.length}</b></summary>`;
+    for (const l of items) {
+      const st = OV[l.id], locked = l.key && !keyFor(l.key);
+      h += `<div class="ov ${st.on ? "on" : ""}"><label><input type="checkbox" data-ov="${l.id}" ${st.on ? "checked" : ""} ${locked ? "disabled" : ""}><span>${esc(l.name)}</span>${badge(l)}</label>${l.kind !== "data" && st.on ? `<input type="range" class="op" data-op="${l.id}" min="10" max="100" value="${Math.round(st.op * 100)}" aria-label="Прозрачность">` : ""}${l.note && st.on ? `<div class="lp-note">${esc(l.note)}</div>` : ""}</div>`;
+    }
+    h += `</details>`;
+  }
+  h += `<details class="lp-grp" data-grp="keys" ${store.get("grp_keys", false) ? "open" : ""}><summary>Ключи API <b>${Object.values(KEYS).filter((_, i) => keyFor(Object.keys(KEYS)[i])).length}/${Object.keys(KEYS).length}</b></summary><div class="lp-note">Ключи хранятся только в этом браузере и открывают слои с пометкой «ключ».</div>`;
+  for (const [k, v] of Object.entries(KEYS)) h += `<div class="keyrow"><label for="key-${k}">${esc(v.name)} <a href="${v.url}" target="_blank" rel="noopener">получить</a></label><input class="key" id="key-${k}" data-key="${k}" value="${esc(keyFor(k))}" placeholder="${esc(v.note)}" autocomplete="off"></div>`;
+  h += `<div class="act"><button type="button" class="btn" id="saveKeys">Сохранить ключи</button></div></details>`;
+  h += `<div class="act lp-foot"><button type="button" class="btn" id="lpReset">Сбросить слои</button></div>`;
+  $("lpBody").innerHTML = h;
+}
+function openKeys(k) { setLp(true); store.set("grp_keys", true); renderPanel(); setTimeout(() => { $("key-" + k)?.focus(); $("key-" + k)?.scrollIntoView({ block: "center" }); }, 50); }
+document.addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.id === "baseSel") { setBase(t.value); return; }
+  if (t.dataset.ov) { setLayer(t.dataset.ov, t.checked); return; }
+  if (t.dataset.op) { setLayer(t.dataset.op, null, t.value / 100); return; }
+  if (t.id === "gibsDate") { if (t.value) { gibsDate = t.value; store.set("gibsDate", gibsDate); for (const l of CATALOG) if (l.gibs) refreshTileUrl(l.id); renderPanel(); renderLegend(); } return; }
+});
+document.addEventListener("input", (e) => { const t = e.target; if (t.dataset.op) { const g = TILES[t.dataset.op]; if (g) g.setOpacity(t.value / 100); } });
+document.addEventListener("toggle", (e) => { const d = e.target; if (d.classList?.contains("lp-grp")) store.set("grp_" + d.dataset.grp, d.open); }, true);
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#lpToggle")) { setLp(!lpOpen()); return; }
+  if (e.target.closest("#lpClose")) { setLp(false); return; }
+  if (e.target.closest("#gibsYesterday")) { gibsDate = defaultGibsDate(); store.set("gibsDate", gibsDate); for (const l of CATALOG) if (l.gibs) refreshTileUrl(l.id); renderPanel(); renderLegend(); return; }
+  if (e.target.closest("#saveKeys")) {
+    document.querySelectorAll("[data-key]").forEach((i) => { KEYSTORE[i.dataset.key] = i.value.trim(); });
+    store.set("keys", KEYSTORE);
+    for (const l of CATALOG) if (l.key) { if (TILES[l.id]) { if (map.hasLayer(TILES[l.id])) map.removeLayer(TILES[l.id]); delete TILES[l.id]; } if (l.kind !== "base" && OV[l.id]?.on && !keyFor(l.key)) OV[l.id].on = false; }
+    if (CAT[base].key && !keyFor(CAT[base].key)) setBase("esri-dark"); else { const t = tileFor(base); if (!map.hasLayer(t)) { t.addTo(map); t.bringToBack(); } }
+    applyLayers(); push("var(--ui)", "Ключи сохранены"); return;
+  }
+  if (e.target.closest("#lpReset")) {
+    for (const l of CATALOG) if (l.kind !== "base") OV[l.id] = { on: l.kind === "data" ? !!DATA_DEFAULT_ON[l.id] : false, op: l.op ?? 1 };
+    gibsDate = defaultGibsDate(); store.set("gibsDate", gibsDate); setBase("esri-dark"); applyLayers(); return;
+  }
 });
 map.on("zoomend", () => document.body.classList.toggle("zoom-low", map.getZoom() < 5));
 document.body.classList.toggle("zoom-low", map.getZoom() < 5);
@@ -351,11 +434,11 @@ function drawShips() {
 // ================= панель =================
 const SECTORS = [["all", "Обзор"], ["air", "Авиа"], ["roads", "Дороги"], ["weather", "Погода"], ["rail", "ЖД"], ["sea", "Каспий"], ["borders", "Границы"], ["quakes", "Сейсмика"], ["sources", "Источники"]];
 const SNAME = Object.fromEntries(SECTORS);
-const SECTOR_LAYERS = { air: ["planes", "airports"], roads: ["roads"], weather: ["temp"], rail: ["rail"], sea: ["ships"], borders: ["borders"], quakes: ["quakes"] };
+const SECTOR_LAYERS = { air: ["planes", "airports"], roads: ["roads"], weather: ["temp"], rail: ["orm"], sea: ["ships"], borders: ["borders"], quakes: ["quakes"] };
 let view = { sector: "all", obj: null };
 function go(v) {
   view = { sector: v.sector || "all", obj: v.obj || null };
-  for (const k of SECTOR_LAYERS[view.sector] || []) if (!LAYERS[k].on) { LAYERS[k].on = true; applyLayers(); }
+  for (const k of SECTOR_LAYERS[view.sector] || []) if (!layerOn(k)) setLayer(k, true);
   if (view.obj?.type === "plane") selPlane = view.obj.hex; else selPlane = null;
   if (view.obj?.type === "road") highlightRoad(view.obj.ref); else if (roadHL) { map.removeLayer(roadHL); roadHL = null; }
   render(); $("dbody").scrollTop = 0;
@@ -401,7 +484,7 @@ function viewSector(s) {
     const bad = refs.reduce((a, r) => a + r.km[2] + r.km[3], 0);
     return `<div><h2>Автодороги</h2><p class="sub">${Math.round(ROADS.total).toLocaleString("ru-RU")} км магистралей${ROADS.fromOSM ? " (OpenStreetMap)" : " (упрощённая схема, геометрия OSM ещё загружается)"}; в зоне риска ${Math.round(bad).toLocaleString("ru-RU")} км.</p></div>
     <div class="rows">${refs.slice(0, 80).map((r) => row(SEVC[r.worst], r.ref, r.name || "", `${Math.round(r.km[2] + r.km[3])} / ${Math.round(r.total)} км`, { sector: "roads", obj: { type: "road", ref: r.ref } })).join("")}</div>
-    <p class="note">Справа: км в зоне риска / вся длина. Пробки — слой «Пробки» (нужен ключ TomTom во вкладке «Источники»).</p>`;
+    <p class="note">Справа: км в зоне риска / вся длина. Пробки в городах — слои «Пробки (Google)» и «Пробки (TomTom)» в панели «Слои».</p>`;
   }
   if (s === "weather") {
     const list = CITIES.map((c) => ({ c, w: W.byId[c.id] })).filter((x) => x.w).sort((a, b) => (b.w.risk.sev - a.w.risk.sev) || (a.w.T - b.w.T));
@@ -432,10 +515,9 @@ function viewSector(s) {
     ${Object.entries(SRCNAME).map(([k, n]) => { const s = st[k]; return `<tr><td>${n}<div class="note">${SRCDESC[k]}</div></td><td>${s ? (s.ok ? pill(0, s.count != null ? s.count + " шт." : "ok") : pill(3, "ошибка")) : pill(-1, "нет")}${s && !s.ok ? `<div class="note">${esc(s.error)}</div>` : ""}</td><td>${s ? ago(Date.parse(s.at) / 1000) : "—"}</td></tr>`; }).join("")}
     <tr><td>Дороги OSM<div class="note">Геометрия магистралей, раз в неделю</div></td><td>${D.roads ? pill(0, D.roads.ways.length + " уч.") : pill(-1, "схема")}</td><td>${D.roads ? ago(D.roads.t) : "—"}</td></tr>
     <tr><td>ADS-B из браузера<div class="note">Самолёты раз в минуту напрямую${direct.host ? ": " + direct.host[1] : ""}</div></td><td>${direct.ok ? pill(0, "работает") : direct.tried ? pill(-1, "недоступно") : pill(-1, "проверка")}</td><td>${direct.at ? ago(direct.at) : "—"}</td></tr>
-    <tr><td>Подложки<div class="note">CARTO, Esri, OpenRailwayMap, NASA GIBS</div></td><td>${pill(0, "тайлы")}</td><td>онлайн</td></tr>
+    <tr><td>Подложки<div class="note">Esri, OSM, Google, EOX, NASA GIBS, OpenRailwayMap, RainViewer</div></td><td>${pill(0, "тайлы")}</td><td>онлайн</td></tr>
     </tbody></table>
-    <div class="sec-h">Пробки (TomTom)</div><p class="sub">Бесплатный ключ: developer.tomtom.com (2 500 запросов в сутки). Ключ хранится только в этом браузере.</p>
-    <input class="key" id="tomtomKey" placeholder="Вставьте ключ TomTom" value="${esc(store.get("tomtom", ""))}"><div class="act"><button class="btn" type="button" id="saveKey">Сохранить ключ</button><button class="btn" type="button" id="clearKey">Удалить</button></div>
+    <div class="sec-h">Подложки и слои карт</div><p class="sub">Все подложки (Google, Esri, топографические, спутниковые NASA и Sentinel) и накладываемые слои (погода, климат, ЖД, пробки) — в панели «Слои» слева от карты. Там же вводятся ключи CARTO, OpenWeatherMap, TomTom, Thunderforest и Stadia.</p>
     <div class="sec-h">Закрытые источники</div><div class="rows">${CLOSED_SOURCES.map(([o, d, h]) => `<div class="row"><span class="st" style="background:var(--sx)"></span><span class="n">${esc(o)}<small>${esc(d)}</small></span><span class="m" style="white-space:normal;max-width:130px;font-size:11px;color:var(--muted)">${esc(h)}</span></div>`).join("")}</div>`;
   }
 }
@@ -512,8 +594,6 @@ function render() {
   $("crumbs").innerHTML = crumbs.map((c, i) => i === crumbs.length - 1 ? `<span class="cur">${esc(c[1])}</span>` : `<button type="button" data-sector="${c[0]}">${esc(c[1])}</button><span>›</span>`).join("");
   $("dbody").innerHTML = html;
   window.__mt = { roads: ROADS.refs.size, roadPieces: [...ROADS.refs.values()].reduce((a, r) => a + r.pieces.length, 0), roadKm: Math.round(ROADS.total), fromOSM: ROADS.fromOSM, planes: planes.size, metar: Object.keys(M).length, weather: (W.list || []).length };
-  const sk = $("saveKey"); if (sk) sk.onclick = () => { store.set("tomtom", $("tomtomKey").value.trim()); LAYERS.traffic.on = !!$("tomtomKey").value.trim(); applyLayers(); push("var(--ui)", "Ключ TomTom сохранён, слой пробок включён"); render(); };
-  const ck = $("clearKey"); if (ck) ck.onclick = () => { store.set("tomtom", ""); LAYERS.traffic.on = false; if (LAYERS.traffic.group) map.removeLayer(LAYERS.traffic.group); applyLayers(); render(); };
   renderKpis();
 }
 
@@ -572,11 +652,13 @@ const PERIOD = 300;
 let next = 0, loading = false;
 async function refresh() {
   if (loading) return; loading = true;
-  const res = await Promise.allSettled(["status", "flights", "metar", "weather", "quakes", "ships", "roads"].map((k) => getJSON(`${k}.json`).then((d) => (D[k] = d))));
+  const res = await Promise.allSettled(["status", "flights", "metar", "weather", "quakes", "ships", "roads", "gibs"].map((k) => getJSON(`${k}.json`).then((d) => (D[k] = d))));
   const okCount = res.filter((r) => r.status === "fulfilled").length;
   indexWeather();
   if (D.flights) mergeFlights(D.flights.ac || [], D.flights.t);
   drawAirports(); drawTemp(); drawCities(); buildRoads(); drawQuakes(); drawShips(); tickPlanes();
+  for (const l of CATALOG) if (l.gibs) refreshTileUrl(l.id);
+  renderPanel();
   if (view.obj?.type === "road") highlightRoad(view.obj.ref);
   diffEvents();
   const gen = D.status ? Date.parse(D.status.generated) / 1000 : 0;
@@ -600,7 +682,8 @@ function clock() {
 // перерисовка панели авиации раз в 15 с, чтобы списки бортов были свежими
 setInterval(() => { if (["air"].includes(view.sector) && !document.activeElement?.matches?.("input")) { const f = view.flown; render(); view.flown = f; } }, 15000);
 
-applyLayers(); renderFeed(); render();
+setBase(base); applyLayers(); renderFeed(); render();
+window.addEventListener("resize", () => { if (lpState.open == null) renderPanel(); });
 await refresh();
 setInterval(clock, 1000); clock();
 directPoll(); setInterval(directPoll, 60000);

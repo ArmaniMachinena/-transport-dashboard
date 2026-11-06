@@ -6,7 +6,7 @@ import { AIRPORTS, BBOX, weatherPoints } from "../assets/config.js";
 import { CATALOG, gibsLayerId } from "../assets/layers.js";
 
 const OUT = process.argv[2] || "_site/data";
-const UA = "mintrans-dashboard/1.0 (+https://github.com)";
+const UA = "kz-transport-dashboard/1.0 (+https://github.com/ArmaniMachinena/-transport-dashboard)";
 const status = { generated: new Date().toISOString(), sources: {} };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

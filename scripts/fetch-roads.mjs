@@ -29,7 +29,7 @@ function simplify(pts, tol) {
 let data, used;
 for (const h of HOSTS) {
   try {
-    const r = await fetch(h, { method: "POST", body: new URLSearchParams({ data: Q }), headers: { "User-Agent": "mintrans-dashboard/1.0" } });
+    const r = await fetch(h, { method: "POST", body: new URLSearchParams({ data: Q }), headers: { "User-Agent": "kz-transport-dashboard/1.0 (+https://github.com/ArmaniMachinena/-transport-dashboard)" } });
     if (!r.ok) throw new Error("HTTP " + r.status);
     data = await r.json(); used = h; break;
   } catch (e) { console.log("✗", h, e.message); }

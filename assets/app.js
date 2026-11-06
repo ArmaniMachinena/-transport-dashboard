@@ -1,4 +1,4 @@
-// Ситуационный центр Минтранса — клиентская часть.
+// Ситуационный центр по транспорту РК — клиентская часть.
 import { AIRPORTS, CITIES, PORTS, BORDERS, PIPES, ROAD_CORRIDORS, CLOSED_SOURCES, GRID, dataBases } from "./config.js";
 import { CATALOG, KEYS, GROUP_ORDER, gibsLayerId, defaultGibsDate } from "./layers.js";
 

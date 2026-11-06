@@ -2,6 +2,11 @@ name: Проверка подложек
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - assets/layers.js
+      - scripts/check-tiles.mjs
+      - .github/workflows/tiles.yml
   schedule:
     - cron: "23 5 * * 1"
 

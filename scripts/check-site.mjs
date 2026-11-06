@@ -90,10 +90,13 @@ await page.waitForTimeout(300);
 const nBase = await count("#baseSel option"), nOv = await count("[data-ov]");
 await page.selectOption("#baseSel", "g-sat");
 await page.check('[data-ov="orm"]'); await page.check('[data-ov="gibs-lst"]'); await page.check('[data-ov="rv-radar"]');
-await page.waitForTimeout(6000);
+await page.waitForTimeout(8000);
 await page.screenshot({ path: `${SHOTS}/6-layers.png` });
-console.log(`Панель слоёв: подложек ${nBase}, слоёв ${nOv}; после переключения на Google + ЖД + NASA LST + радар:`);
-for (const [h, c] of Object.entries(tileHosts)) console.log(`  • ${h}: ok ${c.ok}, ошибок ${c.fail}`);
+const baseNow = await page.$eval("#baseSel", (s) => s.value);
+const domTiles = await page.$$eval("img.leaflet-tile", (imgs) => { const m = {}; for (const i of imgs) { try { const h = new URL(i.src).host; m[h] = m[h] || { loaded: 0, pending: 0 }; (i.complete && i.naturalWidth > 0 ? m[h].loaded++ : m[h].pending++); } catch {} } return m; });
+console.log(`Панель слоёв: подложек ${nBase}, слоёв ${nOv}; выбрана подложка «${baseNow}»; тайлы в DOM после включения Google + ЖД + NASA LST + радар:`);
+for (const [h, c] of Object.entries(domTiles)) console.log(`  • ${h}: загружено ${c.loaded}, не загружено ${c.pending}`);
+for (const [h, c] of Object.entries(domTiles)) { tileHosts[h] = tileHosts[h] || { ok: 0, fail: 0 }; tileHosts[h].ok += c.loaded; tileHosts[h].fail += c.pending; }
 if (nBase < 30 || nOv < 30) problems.push("Каталог слоёв неполный");
 const gok = Object.entries(tileHosts).filter(([h]) => /google/.test(h)).reduce((a, [, c]) => a + c.ok, 0);
 const nasa = tileHosts["gibs.earthdata.nasa.gov"] || { ok: 0, fail: 0 };

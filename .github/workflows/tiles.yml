@@ -35,7 +35,7 @@ jobs:
       - name: Контрольный лист в журнал (base64)
         if: always()
         run: |
-          if [ -f tiles/sheet.jpg ]; then echo "SHEET_BEGIN"; base64 -w0 tiles/sheet.jpg; echo; echo "SHEET_END"; fi
+          if [ -f tiles/sheet.jpg ]; then echo "SHEET_BEGIN"; base64 -w 120 tiles/sheet.jpg; echo "SHEET_END"; fi
       - name: Тайлы
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ситуационный центр по транспорту РК</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0b1418">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Unbounded:wght@600&display=swap">
+<style>
+/* Калитка: одна карточка по центру, в палитре ситуационного центра */
+:root{color-scheme:dark;--bg:#0b1418;--panel:#101d22;--panel2:#15262c;--line:#22363d;--ink:#e3ecec;--muted:#8ba1a5;--ui:#5cc8d6;--bad:#ef5b4c;
+  --f-display:"Unbounded",system-ui,sans-serif;--f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);display:grid;place-items:center;
+  padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
+.gate{width:100%;max-width:380px;display:flex;flex-direction:column;gap:14px}
+.eyebrow{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-family:var(--f-display);font-weight:600;font-size:20px;margin:2px 0 0;line-height:1.25;text-wrap:balance}
+p{margin:0;color:var(--muted)}
+form{display:flex;flex-direction:column;gap:10px;margin-top:6px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+label{font-size:13px;color:var(--muted)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+input[type=password],input[type=text]{width:100%;padding:11px 12px;font:17px/1.2 var(--f-mono);letter-spacing:.04em;color:var(--ink);background:var(--panel2);border:1.5px solid var(--line);border-radius:8px}
+input:focus-visible,button:focus-visible{outline:2px solid var(--ui);outline-offset:2px}
+.chk{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:13.5px}
+.chk input{width:18px;height:18px;accent-color:var(--ui);margin:0}
+.show{background:none;border:0;color:var(--ui);font:13px var(--f-body);padding:4px;cursor:pointer}
+button.go{padding:12px;border:0;border-radius:8px;background:var(--ui);color:#0b1418;font:600 15px var(--f-body);cursor:pointer}
+button.go:disabled{opacity:.6}
+#msg{min-height:1.4em;font-size:13px;text-align:center;color:var(--muted)}
+#msg.bad{color:var(--bad)}
+.bar{height:3px;border-radius:2px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--ui);transition:width .2s}
+.foot{font-size:11.5px;color:var(--muted);text-align:center}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<main class="gate">
+  <div><span class="eyebrow">Республика Казахстан</span><h1>Ситуационный центр по транспорту</h1></div>
+  <p>Доступ по паролю. Введите пароль, который вам передали.</p>
+  <form id="f" autocomplete="on">
+    <div class="row"><label for="pw">Пароль</label><button class="show" type="button" id="show">Показать</button></div>
+    <input id="pw" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+    <label class="chk"><input id="rem" type="checkbox" checked> Запомнить на этом устройстве</label>
+    <button class="go" id="go" type="submit">Открыть</button>
+    <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+    <p id="msg" role="status" aria-live="polite"></p>
+  </form>
+  <p class="foot">Содержимое зашифровано (AES-256-GCM) и расшифровывается только в вашем браузере.</p>
+</main>
+<script>
+(() => {
+'use strict';
+const CFG = __CFG__, KEY = 'kz-transport-pw';
+const $ = s => document.querySelector(s), b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const msg = (t, bad) => { $('#msg').textContent = t; $('#msg').className = bad ? 'bad' : ''; };
+// скачиваем зашифрованное приложение сразу, пока вводится пароль
+let got = 0;
+const data = (async () => {
+  const r = await fetch('app.bin?v=' + CFG.size, { cache: 'no-cache' }); if (!r.ok) throw new Error('net');
+  if (!r.body || !r.body.getReader) return new Uint8Array(await r.arrayBuffer());
+  const rd = r.body.getReader(), parts = [];
+  for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; $('#bar').style.width = Math.min(100, got / CFG.size * 100) + '%'; }
+  const out = new Uint8Array(got); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out;
+})();
+data.catch(() => {});
+async function unlock(pw, remember) {
+  if (!('DecompressionStream' in window) || !crypto.subtle) { msg('Браузер устарел: обновите его и откройте ссылку снова', true); return false; }
+  $('#go').disabled = true; msg('Проверяю пароль…');
+  try {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(CFG.salt), iterations: CFG.iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    msg(got < CFG.size ? 'Загружаю…' : 'Открываю…');
+    let bytes; try { bytes = await data; } catch (e) { msg('Нет связи с сайтом. Проверьте интернет и обновите страницу', true); $('#go').disabled = false; return false; }
+    let plain;
+    try { plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(CFG.iv), additionalData: new TextEncoder().encode('kz-transport-v1') }, key, bytes); }
+    catch (e) { try { localStorage.removeItem(KEY); } catch (x) {} msg('Неверный пароль', true); $('#go').disabled = false; $('#pw').select(); return false; }
+    try { if (remember) localStorage.setItem(KEY, pw); else localStorage.removeItem(KEY); } catch (x) {}
+    const html = await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    document.open(); document.write(html); document.close();
+    return true;
+  } catch (e) { msg('Не получилось открыть: ' + (e && e.message || e), true); $('#go').disabled = false; return false; }
+}
+$('#f').addEventListener('submit', e => { e.preventDefault(); const pw = $('#pw').value.trim(); if (pw) unlock(pw, $('#rem').checked); });
+$('#show').onclick = () => { const i = $('#pw'), t = i.type === 'password'; i.type = t ? 'text' : 'password'; $('#show').textContent = t ? 'Скрыть' : 'Показать'; };
+let saved = null; try { saved = localStorage.getItem(KEY); } catch (e) {}
+if (saved) { $('#pw').value = saved; unlock(saved, true); } else $('#pw').focus();
+})();
+</script>
+</body>
+</html>

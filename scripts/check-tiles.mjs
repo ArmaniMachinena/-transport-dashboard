@@ -1,7 +1,7 @@
 // Проверка всех подложек и слоёв из каталога: запрашивает по одному тайлу над Казахстаном,
 // печатает статус и собирает контрольный лист из тайлов (shots/tiles.jpg).
 // Использование: node scripts/check-tiles.mjs [папка для тайлов]
-import { CATALOG, defaultGibsDate } from "../assets/layers.js";
+import { CATALOG, defaultGibsDate } from "../_src/assets/layers.js";
 import { writeFile, mkdir } from "node:fs/promises";
 import { execSync } from "node:child_process";
 

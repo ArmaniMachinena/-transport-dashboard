@@ -2,8 +2,8 @@
 // Каждый источник независим: если один упал, остальные всё равно сохраняются.
 // Использование: node scripts/fetch-live.mjs <папка вывода>
 import { writeFile, readFile, mkdir } from "node:fs/promises";
-import { AIRPORTS, BBOX, weatherPoints } from "../assets/config.js";
-import { CATALOG, gibsLayerId } from "../assets/layers.js";
+import { AIRPORTS, BBOX, weatherPoints } from "../_src/assets/config.js";
+import { CATALOG, gibsLayerId } from "../_src/assets/layers.js";
 
 const OUT = process.argv[2] || "_site/data";
 const UA = "kz-transport-dashboard/1.0 (+https://github.com/ArmaniMachinena/-transport-dashboard)";

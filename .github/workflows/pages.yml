@@ -1,5 +1,9 @@
 name: Публикация сайта
 
+# Сайт публикуется только под паролем.
+# Если задан секрет SITE_PASSWORD — приложение собирается и шифруется заново из _src/.
+# Если секрета нет — публикуется готовая сборка из корня репозитория (index.html + app.bin),
+# собранная командой: SITE_PASSWORD=... node scripts/build-app.mjs .
 on:
   push:
     branches: [main]
@@ -18,16 +22,32 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      SITE_PASSWORD: ${{ secrets.SITE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - name: Собрать сайт
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Собрать сайт под паролем
         run: |
           mkdir -p _site/data
-          cp -r index.html assets _site/
+          if [ -n "$SITE_PASSWORD" ]; then
+            npm i --no-save --no-audit --no-fund esbuild@0.24.2 >/dev/null
+            node scripts/build-app.mjs _site
+            echo "Собрано из _src с паролем из секрета SITE_PASSWORD"
+          elif [ -f app.bin ] && grep -q "app.bin" index.html; then
+            cp index.html app.bin _site/
+            echo "::notice::Секрет SITE_PASSWORD не задан — опубликована готовая сборка из репозитория (index.html + app.bin)"
+          else
+            echo "::error::Нет ни секрета SITE_PASSWORD, ни готовой сборки (index.html + app.bin). Сайт не опубликован."
+            exit 1
+          fi
           [ -f data/roads.json ] && cp data/roads.json _site/data/ || true
           # последние живые данные как запасной вариант, если raw.githubusercontent.com недоступен
           git fetch --depth 1 origin live-data 2>/dev/null && git --work-tree=_site/data checkout FETCH_HEAD -- . || echo "live-data пока нет"
           touch _site/.nojekyll
+          ls -la _site _site/data
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

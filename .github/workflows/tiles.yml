@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - assets/layers.js
+      - _src/assets/layers.js
       - scripts/check-tiles.mjs
       - .github/workflows/tiles.yml
   schedule:

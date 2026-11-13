@@ -25,6 +25,17 @@ page.on("response", (r) => {
 if (process.env.LEAFLET_DIR) await page.route(/leaflet\.min\.(js|css)$/, (r) => r.fulfill({ path: `${process.env.LEAFLET_DIR}/leaflet.${r.request().url().endsWith(".css") ? "css" : "js"}` }));
 
 await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+// Калитка с паролем: пароль берётся из SITE_PASSWORD; без него проверяем только калитку
+if (await page.$("#pw")) {
+  const pw = (process.env.SITE_PASSWORD || "").trim();
+  const html = await page.content();
+  if (/id="kpis"|leaflet/.test(html)) problems.push("В калитке виден код приложения без пароля");
+  console.log("Сайт под паролем: калитка показана, код приложения в HTML отсутствует.");
+  if (!pw) { console.log("Пароль (секрет SITE_PASSWORD) не задан — дальше проверить нельзя. Калитка в порядке."); await page.screenshot({ path: `${SHOTS}/0-gate.png` }); await browser.close(); process.exit(problems.length ? 1 : 0); }
+  await page.fill("#pw", pw); await page.click("#go");
+  try { await page.waitForSelector("#kpis .kpi", { timeout: 60000 }); console.log("Пароль принят, приложение расшифровано."); }
+  catch { problems.push("Пароль из секрета не подошёл: " + (await text("#msg"))); }
+}
 await page.waitForSelector("#kpis .kpi", { timeout: 60000 });
 await page.waitForTimeout(6000);
 

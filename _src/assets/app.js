@@ -153,7 +153,7 @@ function applyLayers() {
 }
 function renderLegend() {
   const parts = [];
-  if (layerOn("roads")) parts.push(`<span>Дороги по погоде:</span><span><i style="background:var(--s0)"></i>норма</span><span><i style="background:var(--s1)"></i>осадки/ветер</span><span><i style="background:var(--s2)"></i>гололёд/снег</span><span><i style="background:var(--s3)"></i>метель/лёд</span>`);
+  if (layerOn("roads")) parts.push(`<span>Дороги по погоде:</span><span><i style="background:var(--s0)"></i>норма</span><span><i style="background:var(--s1)"></i>осадки/ветер</span><span><i style="background:var(--s2)"></i>гололёд/снег</span><span><i style="background:var(--s3)"></i>метель/лёд/густой туман</span>`);
   if (layerOn("airports")) parts.push(`<span>Аэропорты: кольцо по METAR</span>`);
   if (layerOn("temp")) parts.push(`<span><i style="background:linear-gradient(90deg,${tempColor(-25)},${tempColor(0)},${tempColor(25)})"></i>−25° … +25°</span>`);
   for (const l of CATALOG) if (l.gibs && l.kind !== "base" && layerOn(l.id)) parts.push(`<span>${esc(l.name.replace(/\s*\(.*$/, ""))}: снимок ${gibsDateFor(l).split("-").reverse().join(".")}</span>`);
@@ -287,7 +287,7 @@ let roadHL = null;
 function buildRoads() {
   LAYERS.roads.group.clearLayers();
   const refs = new Map();
-  const addRef = (ref, name) => { const k = ref || name || "без номера"; if (!refs.has(k)) refs.set(k, { ref: k, name: name || "", km: [0, 0, 0, 0], reasons: {}, pieces: [], hot: [], bounds: null }); return refs.get(k); };
+  const addRef = (ref, name) => { const k = ref || name || "без номера"; if (!refs.has(k)) refs.set(k, { ref: k, name: name || "", names: {}, km: [0, 0, 0, 0], reasons: {}, pieces: [], hot: [], bounds: null }); return refs.get(k); };
   const ways = [];
   if (D.roads?.ways?.length) {
     ROADS.fromOSM = true;
@@ -311,6 +311,7 @@ function buildRoads() {
       const r = curW ? curW.risk : { sev: -1, label: "нет данных" };
       let L0 = 0; for (let i = 1; i < chunk.length; i++) L0 += km(chunk[i - 1][0], chunk[i - 1][1], chunk[i][0], chunk[i][1]);
       total += L0; if (r.sev >= 0) { R0.km[r.sev] += L0; R0.reasons[r.label] = (R0.reasons[r.label] || 0) + L0; }
+      if (w.name) R0.names[w.name] = (R0.names[w.name] || 0) + L0;
       if (r.sev >= 2 && curW && !R0.hot.includes(curW)) R0.hot.push(curW);
       const line = L.polyline(chunk, { renderer: canvas, color: r.sev < 0 ? "#6b7f84" : SEVHEX[r.sev], weight: w.rank === 0 ? 3 : 1.8, opacity: w.rank === 0 ? 0.95 : 0.75 })
         .bindTooltip(`${esc(R0.ref)}${R0.name ? " · " + esc(R0.name) : ""}<br>${esc(r.label)}${curW ? " · " + sgn(curW.T) + ", ветер " + Math.round(curW.wg ?? curW.ws ?? 0) + " м/с" : ""}`, { className: "tip", sticky: true })
@@ -325,7 +326,14 @@ function buildRoads() {
     }
     flush();
   }
-  for (const r of refs.values()) { const b = L.latLngBounds([]); r.pieces.forEach((l) => b.extend(l.getBounds())); r.bounds = b; r.total = r.km.reduce((a, b) => a + b, 0); r.worst = r.km[3] > 1 ? 3 : r.km[2] > 1 ? 2 : r.km[1] > 1 ? 1 : 0; }
+  const streetish = /улиц|проспект|переул|бульвар|площад|тупик|микрорайон|street|avenue|road$/i;
+  for (const r of refs.values()) {
+    const b = L.latLngBounds([]); r.pieces.forEach((l) => b.extend(l.getBounds())); r.bounds = b; r.total = r.km.reduce((a, b) => a + b, 0); r.worst = r.km[3] > 1 ? 3 : r.km[2] > 1 ? 2 : r.km[1] > 1 ? 1 : 0;
+    // имя трассы: самое протяжённое из названий её участков, улицы городов в последнюю очередь
+    const cand = Object.entries(r.names).sort((x, y) => y[1] - x[1]);
+    const best = cand.find(([n]) => !streetish.test(n)) || cand[0];
+    if (best) r.name = best[0];
+  }
   ROADS = { refs, total, fromOSM: ROADS.fromOSM };
 }
 function highlightRoad(ref) {
@@ -549,7 +557,7 @@ function viewObj(o) {
     const reasons = Object.entries(r.reasons).sort((a, b) => b[1] - a[1]);
     return { crumb: "roads", title: r.ref, html: `<div><h2>Трасса ${esc(r.ref)}</h2><p class="sub">${esc(r.name)} · ${Math.round(r.total)} км в данных</p></div>
       <div class="kmbar">${r.km.map((v, i) => `<span style="width:${(v / (r.total || 1)) * 100}%;background:${SEVC[i]}"></span>`).join("")}</div>
-      <div class="facts">${fact("Норма", Math.round(r.km[0]) + " км", SEVC[0])}${fact("Осадки, ветер", Math.round(r.km[1]) + " км", SEVC[1])}${fact("Гололёд, снег", Math.round(r.km[2]) + " км", SEVC[2])}${fact("Метель, лёд", Math.round(r.km[3]) + " км", SEVC[3])}</div>
+      <div class="facts">${fact("Норма", Math.round(r.km[0]) + " км", SEVC[0])}${fact("Осадки, ветер", Math.round(r.km[1]) + " км", SEVC[1])}${fact("Гололёд, снег", Math.round(r.km[2]) + " км", SEVC[2])}${fact("Метель, лёд, густой туман", Math.round(r.km[3]) + " км", SEVC[3])}</div>
       <div class="act"><button class="btn" type="button" data-fit="${esc(r.ref)}">Показать на карте</button></div>
       <div class="sec-h">Условия по длине</div><div class="rows">${reasons.map(([k, v]) => `<div class="row"><span class="st" style="background:var(--muted)"></span><span class="n">${esc(k)}</span><span class="m">${Math.round(v)} км</span></div>`).join("")}</div>
       ${r.hot.length ? `<div class="sec-h">Опасные точки</div><div class="rows">${r.hot.map((w) => row(SEVC[w.risk.sev], w.name || `${w.lat.toFixed(1)}° с.ш., ${w.lon.toFixed(1)}° в.д.`, `${w.risk.label} · ${WMO[w.wc] || ""}`, sgn(w.T), { sector: "weather", obj: { type: "wpt", id: w.id } })).join("")}</div>` : ""}
@@ -593,7 +601,7 @@ function render() {
   if (!html) html = viewSector(view.sector);
   $("crumbs").innerHTML = crumbs.map((c, i) => i === crumbs.length - 1 ? `<span class="cur">${esc(c[1])}</span>` : `<button type="button" data-sector="${c[0]}">${esc(c[1])}</button><span>›</span>`).join("");
   $("dbody").innerHTML = html;
-  window.__mt = { roads: ROADS.refs.size, roadPieces: [...ROADS.refs.values()].reduce((a, r) => a + r.pieces.length, 0), roadKm: Math.round(ROADS.total), fromOSM: ROADS.fromOSM, planes: planes.size, metar: Object.keys(M).length, weather: (W.list || []).length };
+  window.__mt = { roads: ROADS.refs.size, roadPieces: [...ROADS.refs.values()].reduce((a, r) => a + r.pieces.length, 0), roadKm: Math.round(ROADS.total), fromOSM: ROADS.fromOSM, planes: planes.size, metar: Object.keys(M).length, weather: (W.list || []).length, map, go, setBase, setLayer, setLp };
   renderKpis();
 }
 
@@ -608,7 +616,7 @@ function renderKpis() {
   const K = [
     ["air", "Бортов в воздухе", air, `${gnd} на земле · ADS-B`, ""],
     ["air", "Аэропорты в норме", AIRPORTS.length - aNo ? `${aOk}/${AIRPORTS.length - aNo}` : "—", [aBad ? `${aBad} IFR/LIFR` : "", aNo ? `${aNo} без сводки` : ""].filter(Boolean).join(" · ") || "по METAR", aBad ? "alert" : ""],
-    ["roads", "Трассы в зоне риска", Math.round(bad).toLocaleString("ru-RU") + " км", worst > 1 ? `метель/лёд: ${Math.round(worst)} км` : `из ${Math.round(ROADS.total).toLocaleString("ru-RU")} км`, worst > 1 ? "alert" : bad > 50 ? "warn" : ""],
+    ["roads", "Трассы в зоне риска", Math.round(bad).toLocaleString("ru-RU") + " км", worst > 1 ? `опасно (метель, лёд, туман): ${Math.round(worst)} км` : `из ${Math.round(ROADS.total).toLocaleString("ru-RU")} км`, worst > 1 ? "alert" : bad > 50 ? "warn" : ""],
     ["weather", "Опасная погода", danger + " гор.", danger ? "гололёд, снег, метель" : "в городах спокойно", danger ? "warn" : ""],
     ["weather", "Холоднее всего", cold ? sgn(cold.w.T) : "—", cold ? cold.c.name : "", ""],
     ["quakes", "Сейсмика, 7 дней", q.length, q.length ? `макс. M${qmax.toFixed(1)}` : "событий нет", qmax >= 5 ? "warn" : ""],

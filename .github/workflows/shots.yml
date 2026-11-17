@@ -1,0 +1,53 @@
+name: Скриншоты
+
+# Снимает презентационные скриншоты дашборда на свежих данных и кладёт их
+# в ветку screenshots (одним коммитом, история не растёт).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Собрать сайт локально из исходников и свежих данных
+        run: |
+          mkdir -p site/data
+          cp -r _src/. site/
+          [ -f data/roads.json ] && cp data/roads.json site/data/ || true
+          git fetch --depth 1 origin live-data 2>/dev/null && git --work-tree=site/data checkout FETCH_HEAD -- . || true
+          node scripts/fetch-live.mjs site/data || echo "сбор данных с ошибками, используем что есть"
+          ls -la site site/data
+      - name: Установить браузер
+        run: |
+          npm init -y >/dev/null
+          npm i --no-audit --no-fund playwright@1.49.1
+          npx playwright install --with-deps chromium
+      - name: Снять скриншоты
+        run: |
+          (cd site && python3 -m http.server 8000 >/dev/null 2>&1 &)
+          sleep 2
+          node scripts/shots.mjs http://localhost:8000 shots
+      - name: Опубликовать в ветку screenshots
+        run: |
+          cd shots
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q --orphan screenshots
+          git add -A
+          git commit -qm "Скриншоты $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" screenshots
+      - name: Скриншоты (артефакт)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shots
+          path: shots

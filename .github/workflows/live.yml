@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: live-data
@@ -54,3 +55,9 @@ jobs:
             sleep 240
           done
           echo "Сделано проходов: $i"
+      - name: Запустить следующий цикл
+        # Планировщик GitHub иногда пропускает запуски по расписанию (бывали паузы по 5–7 часов),
+        # поэтому цикл сам запускает следующий; расписание остаётся как страховка.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run live.yml --ref main || echo "не удалось запустить следующий цикл, подхватит расписание"
